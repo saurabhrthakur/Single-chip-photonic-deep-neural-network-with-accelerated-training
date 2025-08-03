@@ -1,6 +1,6 @@
 # Replication and Analysis of a Photonic Deep Neural Network
 
-This repository contains the source code and documentation for my final-year B.Tech thesis project at the University of Delhi. The project focuses on the replication and analysis of the groundbreaking paper: "[Single chip photonic deep neural network with accelerated training](https://arxiv.org/abs/2208.01623)" by Saumil Bandyopadhyay, Dirk Englund, et al.
+This repository contains the source code and documentation for my final-year B.Sc. thesis project at the University of Delhi. The project focuses on the replication and analysis of the groundbreaking paper: "[Single chip photonic deep neural network with accelerated training](https://arxiv.org/abs/2208.01623)" by Saumil Bandyopadhyay, Dirk Englund, et al.
 
 ## 🎯 Project Goals
 
@@ -24,8 +24,8 @@ The model is trained on the **Hillenbrand vowel classification dataset**, which 
 
 1.  **Clone the repository:**
     ```bash
-    git clone [https://github.com/](https://github.com/)[Your-Username]/[Your-Repo-Name].git
-    cd [Your-Repo-Name]
+    git clone [https://github.com/](https://github.com/)[saurabhrthakur]/[Single-chip-photonic-deep-neural-network-with-accelerated-training].git
+    cd [Single-chip-photonic-deep-neural-network-with-accelerated-training]
     ```
 2.  **Set up the environment:**
     ```bash
