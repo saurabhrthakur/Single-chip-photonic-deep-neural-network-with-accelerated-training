@@ -1,0 +1,16 @@
+numpy
+scipy
+pandas
+scikit-learn
+torch
+matplotlib
+simphony
+gdsfactory
+gdstk
+gdslib
+gdslib-core
+gdslib-core-core
+gdslib-core-core-core
+gdslib-core-core-core-core
+gdslib-core-core-core-core-core
+gdslib-core-core-core-core-core-core
