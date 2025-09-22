@@ -1,6 +1,6 @@
 import numpy as np
 import pandas as pd
-from sklearn.preprocessing import LabelEncoder
+from sklearn.model_selection import train_test_split
 import os
 
 # ==============================================================================
@@ -38,36 +38,35 @@ def get_vowel_data(print_info=True):
     df[feature_cols] = df[feature_cols].apply(pd.to_numeric, errors='coerce')
     df.dropna(subset=feature_cols + ['vowel'], inplace=True)
     
+    # --- Filter to the 6-class subset in the specified order ---
+    # Desired class order (provided by user): ae, aw, uw, er, iy, ih
+    class_order = ['ae', 'aw', 'uw', 'er', 'iy', 'ih']
+    df = df[df['vowel'].isin(class_order)].copy()
+    
     # --- Feature and Label Finalization ---
     labels = df['vowel'].values
     features = df[feature_cols].values
     
-    # --- Label Encoding ---
-    label_encoder = LabelEncoder()
-    y = label_encoder.fit_transform(labels)
-    class_names = label_encoder.classes_
+    # --- Manual label mapping to preserve the specified order ---
+    class_to_idx = {cls: idx for idx, cls in enumerate(class_order)}
+    y = np.array([class_to_idx[v] for v in labels], dtype=np.int64)
+    class_names = np.array(class_order)
     
     # --- Data Splitting and Normalization ---
     X = features.astype(np.float64)
 
-    # Shuffle the clean data consistently before splitting
-    np.random.seed(42)
-    indices = np.arange(len(X))
-    np.random.shuffle(indices)
-    X = X[indices]
-    y = y[indices]
-    
-    # Use the exact train/test split size mentioned in the paper
+    # Stratified split to maintain class balance
+    if len(X) != 834:
+        # This check ensures our assumption about the filtered data size is correct.
+        print(f"Warning: Expected 834 samples after filtering, but found {len(X)}. The split might not be exactly 540/294.")
+
+    # Explicitly define the train/test split sizes
     train_size = 540
-    test_size = 294
+    test_size = 294 # Total (834) - Train (540) = 294
 
-    if len(X) < train_size + test_size:
-        raise ValueError(f"Not enough clean data for the specified split. Need {train_size + test_size}, but have {len(X)}.")
-
-    X_train = X[:train_size]
-    y_train = y[:train_size]
-    X_test = X[train_size : train_size + test_size]
-    y_test = y[train_size : train_size + test_size]
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y, train_size=train_size, test_size=test_size, random_state=42, stratify=y
+    )
 
     # Apply per-sample max-scaling normalization
     X_train_max = np.max(X_train, axis=1, keepdims=True)
@@ -84,6 +83,13 @@ def get_vowel_data(print_info=True):
         print("Dataset loaded and cleaned successfully!")
         print(f"Training samples: {len(X_train_normalized)}")
         print(f"Test samples: {len(X_test_normalized)}")
-        print(f"Number of classes: {len(class_names)}\n")
-
+        print(f"Number of classes: {len(class_names)}")
+        print(f"Classes (ordered): {', '.join(class_names)}\n")
+    
+    # Minimal label encoder substitute with classes_ attribute
+    class SimpleLabelEncoder:
+        def __init__(self, classes):
+            self.classes_ = np.array(classes)
+    
+    label_encoder = SimpleLabelEncoder(class_names)
     return X_train_normalized, X_test_normalized, y_train, y_test, label_encoder, class_names
