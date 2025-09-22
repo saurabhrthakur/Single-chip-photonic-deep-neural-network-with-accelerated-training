@@ -318,19 +318,19 @@ def create_clements_mesh_6x6(mzi_params):
     # Process each layer of the rectangular mesh
     for layer_idx, layer_pairs in enumerate(rectangular_mesh_architecture):
         for (ch_a, ch_b) in layer_pairs:
-            theta1 = mzi_params[param_idx]
-            theta2 = mzi_params[param_idx + 1]
-            param_idx += 2
-            
-            mzi_matrix = create_mzi_matrix(theta1, theta2)
+        theta1 = mzi_params[param_idx]
+        theta2 = mzi_params[param_idx + 1]
+        param_idx += 2
+        
+        mzi_matrix = create_mzi_matrix(theta1, theta2)
                         
-            T = np.eye(6, dtype=np.complex128)
-            T[ch_a, ch_a] = mzi_matrix[0, 0]
-            T[ch_a, ch_b] = mzi_matrix[0, 1]
-            T[ch_b, ch_a] = mzi_matrix[1, 0]
-            T[ch_b, ch_b] = mzi_matrix[1, 1]
+        T = np.eye(6, dtype=np.complex128)
+        T[ch_a, ch_a] = mzi_matrix[0, 0]
+        T[ch_a, ch_b] = mzi_matrix[0, 1]
+        T[ch_b, ch_a] = mzi_matrix[1, 0]
+        T[ch_b, ch_b] = mzi_matrix[1, 1]
                         
-            U = T @ U
+        U = T @ U
     
     # Add output phase shifters (6 remaining parameters)
     output_phases = mzi_params[30:36]  # Parameters 30-35
@@ -719,7 +719,7 @@ def model_passive_ring_response(delta_lambda, injected_current_mA,
     # 3. --- Return the power transmission ---
     # Since this is a passive measurement, we care about power, not the complex field.
     return np.abs(t_ring)**2
-    
+
 def verify_nofu_physics(test_powers=None, beta=0.1, initial_detuning=0.0):
     """
     Verifies the NOFU physical behavior matches expected characteristics.
@@ -844,7 +844,7 @@ def onn_forward_complex_noisy(theta_intended, crosstalk_matrix, x_fields, n_chan
     else:
         # Standard approach: apply crosstalk directly
         if crosstalk_matrix is not None:
-            theta_actual = crosstalk_matrix @ theta_intended
+        theta_actual = crosstalk_matrix @ theta_intended
         else:
             # No crosstalk (simplified case)
             theta_actual = theta_intended
