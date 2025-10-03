@@ -48,7 +48,7 @@ class FICONNDigitalTwin:
             n_channels: Number of input/output channels (default: 6 for FICONN)
         """
         self.n_channels = n_channels
-        self.n_mzis = n_channels * (n_channels - 1) // 2  # Triangular mesh
+        self.n_mzis = 15  # Rectangular mesh: 3+2+3+2+3+2 = 15 MZIs
         
         print(f"🔧 Initializing FICONN Digital Twin")
         print(f"   Channels: {n_channels}")
@@ -123,139 +123,84 @@ class FICONNDigitalTwin:
         
         return MZI
     
-    def create_clements_mesh_matrix(self, phases, bs_errors, waveguide_losses):
+    def create_clements_mesh_matrix(self, mzi_params):
         """
-        Create the complete Clements mesh matrix with imperfections.
+        Create the complete Clements mesh matrix using the SAME architecture as ficonn_core.py.
+        
+        This implements the rectangular MZI mesh architecture:
+        - 6 layers with alternating 3-2-3-2-3-2 MZI pattern
+        - 15 MZIs total: 3+2+3+2+3+2 in rectangular layers
+        - 6 output phase shifters  
+        - Total: 36 parameters
         
         Args:
-            phases: Phase shifter angles for all MZIs
-            bs_errors: Beamsplitter errors for all MZIs
-            waveguide_losses: Waveguide losses for all MZIs
+            mzi_params: Array of 36 parameters (30 MZI params + 6 output phases)
         
         Returns:
-            Complete mesh transfer matrix
+            Complete 6x6 mesh transfer matrix with imperfections
         """
+        if len(mzi_params) != 36:
+            raise ValueError(f"Expected 36 parameters for 6x6 rectangular mesh, got {len(mzi_params)}")
+        
         # Start with identity matrix
-        mesh_matrix = np.eye(self.n_channels, dtype=complex)
+        U = np.eye(6, dtype=np.complex128)
         
-        # Apply thermal crosstalk to phases first
-        phases_with_crosstalk = self.apply_thermal_crosstalk(phases)
+        # Rectangular mesh architecture (SAME as ficonn_core.py)
+        rectangular_mesh_architecture = [
+            # Layer 1: 3 MZIs
+            [(0, 1), (2, 3), (4, 5)],
+            
+            # Layer 2: 2 MZIs
+            [(1, 2), (3, 4)],
+            
+            # Layer 3: 3 MZIs
+            [(0, 1), (2, 3), (4, 5)],
+            
+            # Layer 4: 2 MZIs
+            [(1, 2), (3, 4)],
+            
+            # Layer 5: 3 MZIs
+            [(0, 1), (2, 3), (4, 5)],
+            
+            # Layer 6: 2 MZIs
+            [(1, 2), (3, 4)],
+        ]
         
-        # Ensure we have enough phases for all MZIs
-        if len(phases_with_crosstalk) < self.n_mzis:
-            # Pad with zeros if not enough phases
-            phases_with_crosstalk = np.pad(phases_with_crosstalk, (0, self.n_mzis - len(phases_with_crosstalk)), 'constant')
+        param_idx = 0
         
-        # Build the mesh layer by layer (simplified Clements mesh)
-        # For a 6x6 mesh, we have 5 layers with decreasing number of MZIs
-        mzi_idx = 0
-        
-        # Layer 1: 5 MZIs (channels 0-1, 1-2, 2-3, 3-4, 4-5)
-        for i in range(self.n_channels - 1):
-            if mzi_idx < len(phases_with_crosstalk):
-                theta1 = phases_with_crosstalk[mzi_idx]
-                theta2 = 0  # Second phase shifter set to 0 for simplicity
+        # Process each layer of the rectangular mesh
+        for layer_idx, layer_pairs in enumerate(rectangular_mesh_architecture):
+            for (ch_a, ch_b) in layer_pairs:
+                theta1 = mzi_params[param_idx]
+                theta2 = mzi_params[param_idx + 1]
+                param_idx += 2
                 
-                bs_error1 = bs_errors[2 * mzi_idx] if 2 * mzi_idx < len(bs_errors) else 0
-                bs_error2 = bs_errors[2 * mzi_idx + 1] if 2 * mzi_idx + 1 < len(bs_errors) else 0
-                
-                waveguide_loss = waveguide_losses[mzi_idx] if mzi_idx < len(waveguide_losses) else 1.0
-                
-                # Create imperfect MZI matrix
-                mzi_matrix = self.create_imperfect_mzi_matrix(theta1, theta2, bs_error1, bs_error2, waveguide_loss)
-                
-                # Apply MZI transformation to channels i and i+1
-                if i < self.n_channels - 1:
-                    # Create a larger matrix for the full system
-                    full_mzi = np.eye(self.n_channels, dtype=complex)
-                    full_mzi[i:i+2, i:i+2] = mzi_matrix
-                    
-                    # Apply to the mesh
-                    mesh_matrix = full_mzi @ mesh_matrix
-                
-                mzi_idx += 1
-        
-        # Layer 2: 4 MZIs (channels 0-2, 1-3, 2-4, 3-5)
-        for i in range(self.n_channels - 2):
-            if mzi_idx < len(phases_with_crosstalk):
-                theta1 = phases_with_crosstalk[mzi_idx]
-                theta2 = 0
-                
-                bs_error1 = bs_errors[2 * mzi_idx] if 2 * mzi_idx < len(bs_errors) else 0
-                bs_error2 = bs_errors[2 * mzi_idx + 1] if 2 * mzi_idx + 1 < len(bs_errors) else 0
-                
-                waveguide_loss = waveguide_losses[mzi_idx] if mzi_idx < len(waveguide_losses) else 1.0
+                # Create imperfect MZI matrix with hardware imperfections
+                bs_error1 = self.beamsplitter_errors[2 * (param_idx // 2 - 1)] if 2 * (param_idx // 2 - 1) < len(self.beamsplitter_errors) else 0
+                bs_error2 = self.beamsplitter_errors[2 * (param_idx // 2 - 1) + 1] if 2 * (param_idx // 2 - 1) + 1 < len(self.beamsplitter_errors) else 0
+                waveguide_loss = self.waveguide_losses[param_idx // 2 - 1] if param_idx // 2 - 1 < len(self.waveguide_losses) else 1.0
                 
                 mzi_matrix = self.create_imperfect_mzi_matrix(theta1, theta2, bs_error1, bs_error2, waveguide_loss)
                 
-                # Apply to channels i and i+2
-                if i + 2 < self.n_channels:
-                    full_mzi = np.eye(self.n_channels, dtype=complex)
-                    full_mzi[i:i+2, i:i+2] = mzi_matrix
-                    mesh_matrix = full_mzi @ mesh_matrix
-                
-                mzi_idx += 1
+                # Create transformation matrix for the full system
+                T = np.eye(6, dtype=np.complex128)
+                T[ch_a, ch_a] = mzi_matrix[0, 0]
+                T[ch_a, ch_b] = mzi_matrix[0, 1]
+                T[ch_b, ch_a] = mzi_matrix[1, 0]
+                T[ch_b, ch_b] = mzi_matrix[1, 1]
+                                
+                U = T @ U
         
-        # Layer 3: 3 MZIs (channels 0-3, 1-4, 2-5)
-        for i in range(self.n_channels - 3):
-            if mzi_idx < len(phases_with_crosstalk):
-                theta1 = phases_with_crosstalk[mzi_idx]
-                theta2 = 0
-                
-                bs_error1 = bs_errors[2 * mzi_idx] if 2 * mzi_idx < len(bs_errors) else 0
-                bs_error2 = bs_errors[2 * mzi_idx + 1] if 2 * mzi_idx + 1 < len(bs_errors) else 0
-                
-                waveguide_loss = waveguide_losses[mzi_idx] if mzi_idx < len(waveguide_losses) else 1.0
-                
-                mzi_matrix = self.create_imperfect_mzi_matrix(theta1, theta2, bs_error1, bs_error2, waveguide_loss)
-                
-                # Apply to channels i and i+3
-                if i + 3 < self.n_channels:
-                    full_mzi = np.eye(self.n_channels, dtype=complex)
-                    full_mzi[i:i+2, i:i+2] = mzi_matrix
-                    mesh_matrix = full_mzi @ mesh_matrix
-                
-                mzi_idx += 1
+        # Add output phase shifters (6 remaining parameters)
+        output_phases = mzi_params[30:36]  # Parameters 30-35
         
-        # Layer 4: 2 MZIs (channels 0-4, 1-5)
-        for i in range(self.n_channels - 4):
-            if mzi_idx < len(phases_with_crosstalk):
-                theta1 = phases_with_crosstalk[mzi_idx]
-                theta2 = 0
-                
-                bs_error1 = bs_errors[2 * mzi_idx] if 2 * mzi_idx < len(bs_errors) else 0
-                bs_error2 = bs_errors[2 * mzi_idx + 1] if 2 * mzi_idx + 1 < len(bs_errors) else 0
-                
-                waveguide_loss = waveguide_losses[mzi_idx] if mzi_idx < len(waveguide_losses) else 1.0
-                
-                mzi_matrix = self.create_imperfect_mzi_matrix(theta1, theta2, bs_error1, bs_error2, waveguide_loss)
-                
-                # Apply to channels i and i+4
-                if i + 4 < self.n_channels:
-                    full_mzi = np.eye(self.n_channels, dtype=complex)
-                    full_mzi[i:i+2, i:i+2] = mzi_matrix
-                    mesh_matrix = full_mzi @ mesh_matrix
-                
-                mzi_idx += 1
+        # Apply thermal crosstalk to output phases
+        output_phases_with_crosstalk = self.apply_thermal_crosstalk(output_phases)
         
-        # Layer 5: 1 MZI (channels 0-5)
-        if mzi_idx < len(phases_with_crosstalk):
-            theta1 = phases_with_crosstalk[mzi_idx]
-            theta2 = 0
-            
-            bs_error1 = bs_errors[2 * mzi_idx] if 2 * mzi_idx < len(bs_errors) else 0
-            bs_error2 = bs_errors[2 * mzi_idx + 1] if 2 * mzi_idx + 1 < len(bs_errors) else 0
-            
-            waveguide_loss = waveguide_losses[mzi_idx] if mzi_idx < len(waveguide_losses) else 1.0
-            
-            mzi_matrix = self.create_imperfect_mzi_matrix(theta1, theta2, bs_error1, bs_error2, waveguide_loss)
-            
-            # Apply to channels 0 and 5
-            full_mzi = np.eye(self.n_channels, dtype=complex)
-            full_mzi[0:2, 0:2] = mzi_matrix
-            mesh_matrix = full_mzi @ mesh_matrix
+        phase_matrix = np.diag(np.exp(1j * output_phases_with_crosstalk))
+        U = phase_matrix @ U
         
-        return mesh_matrix
+        return U
     
     def apply_thermal_crosstalk(self, phases):
         """
@@ -278,21 +223,19 @@ class FICONNDigitalTwin:
         
         return phases_with_crosstalk
     
-    def forward_pass(self, input_vector, phases, bs_errors, waveguide_losses):
+    def forward_pass(self, input_vector, mzi_params):
         """
         Forward pass through the imperfect MZI mesh.
         
         Args:
             input_vector: Input vector (complex)
-            phases: Phase shifter angles
-            bs_errors: Beamsplitter errors
-            waveguide_losses: Waveguide losses
+            mzi_params: Array of 36 MZI parameters (30 MZI + 6 output phases)
         
         Returns:
             Output vector after passing through the mesh
         """
         # Create the mesh matrix with current parameters
-        mesh_matrix = self.create_clements_mesh_matrix(phases, bs_errors, waveguide_losses)
+        mesh_matrix = self.create_clements_mesh_matrix(mzi_params)
         
         # Apply the mesh transformation
         output_vector = mesh_matrix @ input_vector
@@ -344,14 +287,10 @@ class FICONNDigitalTwin:
         for i in range(n_matrices):
             # Generate random unitary matrix using Clements decomposition
             # This simulates programming the chip with different configurations
-            random_phases = np.random.uniform(0, 2*np.pi, self.n_mzis)
+            random_mzi_params = np.random.uniform(0, 2*np.pi, 36)  # 36 parameters total
             
             # Create "measured" matrix (with current imperfections)
-            measured_matrix = self.create_clements_mesh_matrix(
-                random_phases, 
-                self.beamsplitter_errors, 
-                self.waveguide_losses
-            )
+            measured_matrix = self.create_clements_mesh_matrix(random_mzi_params)
             
             # Generate random input vectors
             for j in range(n_vectors):
@@ -364,7 +303,7 @@ class FICONNDigitalTwin:
                 
                 # Store training example
                 training_data.append({
-                    'phases': random_phases,
+                    'mzi_params': random_mzi_params,
                     'input_vector': input_vector,
                     'measured_output': measured_output,
                     'measured_matrix': measured_matrix
@@ -386,28 +325,37 @@ class FICONNDigitalTwin:
             Total loss (negative fidelity, to be minimized)
         """
         # Unpack parameters
-        n_bs = 2 * self.n_mzis
-        n_wg = self.n_mzis
-        n_tc = self.n_channels * self.n_channels
+        n_bs = 2 * self.n_mzis  # 30 beamsplitter error parameters
+        n_wg = self.n_mzis      # 15 waveguide loss parameters
+        n_tc = self.n_channels * self.n_channels  # 36 thermal crosstalk parameters
         
         bs_errors = params[:n_bs]
         waveguide_losses = params[n_bs:n_bs + n_wg]
         thermal_crosstalk_flat = params[n_bs + n_wg:n_bs + n_wg + n_tc]
         thermal_crosstalk = thermal_crosstalk_flat.reshape(self.n_channels, self.n_channels)
         
-        # Ensure physical constraints
-        waveguide_losses = np.clip(waveguide_losses, 0.8, 1.0)  # 0.8 to 1.0 (20% max loss)
+        # No constraints needed - let the optimizer find natural values
+        
+        # Temporarily update model parameters for forward pass
+        original_bs_errors = self.beamsplitter_errors.copy()
+        original_waveguide_losses = self.waveguide_losses.copy()
+        original_thermal_crosstalk = self.thermal_crosstalk.copy()
+        
+        self.beamsplitter_errors = bs_errors
+        self.waveguide_losses = waveguide_losses
+        self.thermal_crosstalk = thermal_crosstalk
         
         total_fidelity = 0.0
         n_examples = 0
         
+        try:
         for example in training_data:
-            phases = example['phases']
+                mzi_params = example['mzi_params']
             input_vector = example['input_vector']
             measured_output = example['measured_output']
             
             # Predict output using current parameters
-            predicted_output = self.forward_pass(input_vector, phases, bs_errors, waveguide_losses)
+                predicted_output = self.forward_pass(input_vector, mzi_params)
             
             # Calculate fidelity for this example
             # We'll use output vector similarity as a proxy for matrix fidelity
@@ -415,18 +363,23 @@ class FICONNDigitalTwin:
             
             total_fidelity += output_fidelity
             n_examples += 1
+        finally:
+            # Restore original parameters
+            self.beamsplitter_errors = original_bs_errors
+            self.waveguide_losses = original_waveguide_losses
+            self.thermal_crosstalk = original_thermal_crosstalk
         
         # Return negative average fidelity (to minimize)
         avg_fidelity = total_fidelity / n_examples
         return -avg_fidelity
     
-    def fit_parameters(self, training_data, method='L-BFGS-B'):
+    def fit_parameters(self, training_data, method='BFGS'):
         """
         Fit the hardware imperfection parameters using L-BFGS algorithm.
         
         Args:
             training_data: Training dataset
-            method: Optimization method (default: L-BFGS-B)
+            method: Optimization method (default: BFGS)
         
         Returns:
             Optimization result
@@ -442,30 +395,14 @@ class FICONNDigitalTwin:
         
         print(f"   Initial parameters: {len(initial_params)} total")
         print(f"   Target fidelity: 0.969 ± 0.023 (paper result)")
+        print(f"   Using unconstrained optimization (no bounds)")
         
-        # Define bounds for physical constraints
-        n_bs = 2 * self.n_mzis
-        n_wg = self.n_mzis
-        n_tc = self.n_channels * self.n_channels
-        
-        # Beamsplitter errors: ±0.1 (10% deviation from 50:50)
-        bs_bounds = [(-0.1, 0.1)] * n_bs
-        
-        # Waveguide losses: 0.8 to 1.0 (20% max loss)
-        wg_bounds = [(0.8, 1.0)] * n_wg
-        
-        # Thermal crosstalk: ±0.05 (5% coupling)
-        tc_bounds = [(-0.05, 0.05)] * n_tc
-        
-        bounds = bs_bounds + wg_bounds + tc_bounds
-        
-            # Optimize parameters
+        # Optimize parameters without bounds
         result = minimize(
                 self.objective_function,
                 initial_params,
                 args=(training_data,),
                 method=method,
-            bounds=bounds,
                 options={'maxiter': 1000, 'disp': True}
             )
         
@@ -511,12 +448,12 @@ class FICONNDigitalTwin:
         n_examples = 0
         
         for example in training_data:
-            phases = example['phases']
+            mzi_params = example['mzi_params']
             input_vector = example['input_vector']
             measured_output = example['measured_output']
             
             # Predict output using fitted parameters
-            predicted_output = self.forward_pass(input_vector, phases, bs_errors, waveguide_losses)
+            predicted_output = self.forward_pass(input_vector, mzi_params)
             
             # Calculate fidelity
             output_fidelity = np.abs(np.vdot(measured_output, predicted_output)) / (np.linalg.norm(measured_output) * np.linalg.norm(predicted_output))
@@ -552,15 +489,11 @@ class FICONNDigitalTwin:
         ax1 = axes[0, 0]
         fidelities = []
         for example in training_data[:100]:  # Sample first 100 for visualization
-            phases = example['phases']
+            mzi_params = example['mzi_params']
             input_vector = example['input_vector']
             measured_output = example['measured_output']
             
-            predicted_output = self.forward_pass(
-                input_vector, phases, 
-                self.beamsplitter_errors, 
-                self.waveguide_losses
-            )
+            predicted_output = self.forward_pass(input_vector, mzi_params)
             
             fidelity = np.abs(np.vdot(measured_output, predicted_output)) / (np.linalg.norm(measured_output) * np.linalg.norm(predicted_output))
             fidelities.append(fidelity)
@@ -632,7 +565,7 @@ def main():
     print("This implements the physics-based digital twin for hardware characterization:")
     print("• Models: beamsplitter errors, waveguide losses, thermal crosstalk")
     print("• Training data: 300 random unitary matrices × 100 random input vectors")
-    print("• Algorithm: L-BFGS for parameter fitting")
+    print("• Algorithm: BFGS for parameter fitting")
     print("• Target: Fidelity F = 0.969 ± 0.023")
     print("=" * 80)
     
@@ -670,7 +603,7 @@ def main():
             
             print(f"\n🎉 Digital Twin successfully implemented!")
             print("   - Physics-based MZI mesh model with imperfections")
-            print("   - Parameter fitting using L-BFGS algorithm")
+            print("   - Parameter fitting using BFGS algorithm")
             print("   - Hardware characterization and error correction")
             print("   - Ready for comparison with real hardware measurements")
             

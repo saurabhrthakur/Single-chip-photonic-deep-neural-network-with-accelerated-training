@@ -4,13 +4,17 @@ pandas
 scikit-learn
 torch
 matplotlib
+tqdm
+seaborn
+
+# Google Cloud Platform
+google-cloud-storage
+google-cloud-aiplatform
+google-auth
+google-auth-oauthlib
+google-auth-httplib2
+
+# Optional: For advanced features
 simphony
 gdsfactory
 gdstk
-gdslib
-gdslib-core
-gdslib-core-core
-gdslib-core-core-core
-gdslib-core-core-core-core
-gdslib-core-core-core-core-core
-gdslib-core-core-core-core-core-core
